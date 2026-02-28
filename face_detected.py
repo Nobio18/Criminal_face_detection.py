@@ -12,13 +12,15 @@ def knn(train, test, k=5):
         iy = train[i, -1]
         d = distance(test, ix)
         dist.append([d, iy])
+
     dk = sorted(dist, key=lambda x: x[0])[:k]
-    labels = np.array(dk)[:, -1]
+    labels = np.array(dk)[:, 1]
     output = np.unique(labels, return_counts=True)
     index = np.argmax(output[1])
-    return output[0][index]
+    return int(output[0][index]), dk[0][0]
 
-dataset_path = os.path.join("Criminal_Face_detection", "foldername", "Data_set")
+
+dataset_path = os.path.join("Data_set")
 
 face_data = []
 labels = []
@@ -47,16 +49,22 @@ face_dataset = np.array(flat_face_data)
 face_labels = np.concatenate(labels, axis=0).reshape((-1, 1))
 trainset = np.concatenate((face_dataset, face_labels), axis=1)
 
-print("Dataset Shape:", face_dataset.shape)
-print("Labels Shape:", face_labels.shape)
+print("Starting")
 
 cap = cv2.VideoCapture(0)
 
 face_cascade = cv2.CascadeClassifier(
-    os.path.join("Criminal_Face_detection", "foldername", "haarcascade_frontalface_alt.xml")
+    cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
+if face_cascade.empty():
+    print("Error loading cascade file")
+    exit()
+
 font = cv2.FONT_HERSHEY_SIMPLEX
+distance_threshold = 4000
+
+label_text = "Unauthorized"
 
 while True:
     ret, frame = cap.read()
@@ -68,25 +76,36 @@ while True:
 
     for (x, y, w, h) in faces:
         offset = 5
-        y1 = max(0, y - offset)
-        y2 = min(frame.shape[0], y + h + offset)
-        x1 = max(0, x - offset)
-        x2 = min(frame.shape[1], x + w + offset)
+        y1, y2 = max(0, y - offset), min(frame.shape[0], y + h + offset)
+        x1, x2 = max(0, x - offset), min(frame.shape[1], x + w + offset)
 
         face_section = frame[y1:y2, x1:x2]
         face_section = cv2.resize(face_section, (100, 100))
         face_section = cv2.cvtColor(face_section, cv2.COLOR_BGR2GRAY)
         face_section = face_section.flatten()
 
-        out = knn(trainset, face_section)
+        out, dist_to_nearest = knn(trainset, face_section)
 
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 255), 2)
-        cv2.putText(frame, names[int(out)], (x, y - 10), font, 1, (0, 255, 0), 2, cv2.LINE_AA)
+        if dist_to_nearest < distance_threshold:
+            label_text = names[int(out)]
+            color = (0, 255, 0)
+        else:
+            label_text = "Unauthorized"
+            color = (0, 0, 255)
+
+        cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
+        cv2.putText(frame, label_text, (x, y - 10),
+                    font, 0.8, color, 2, cv2.LINE_AA)
 
     cv2.imshow("Criminal Face Detection", frame)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+
+if label_text != "Unauthorized":
+    print("Name:", label_text)
+else:
+    print("Unauthorized")
 
 cap.release()
 cv2.destroyAllWindows()
