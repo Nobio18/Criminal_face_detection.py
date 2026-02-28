@@ -2,79 +2,63 @@ import cv2
 import numpy as np
 import os
 
+name = input("Enter person name: ")
+crime = input("Enter your crime: ")
+age = input("Enter your age: ")
+
+dataset_path = os.path.join("Data_set")
+os.makedirs(dataset_path, exist_ok=True)
 cap = cv2.VideoCapture(0)
-face_cascade = cv2.CascadeClassifier("Criminal_Face_detection/foldername/haarcascade_frontalface_alt.xml")
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_alt.xml")
 
-skip = 0
+sharpen_kernel = np.array([
+    [0, -1, 0],
+    [-1, 5, -1],
+    [0, -1, 0]
+])
+
 face_data = []
-dataset_path = "Criminal_Face_detection/foldername/Data_set"
-
-if not os.path.exists(dataset_path):
-    os.makedirs(dataset_path)
-
-file_name = input("Enter the name of the person: ")
-crime = input("Enter the crime of the person: ")
-age = input("Enter the age of the person: ")
-
-file_name = file_name + "_" + crime + "_" + age
+count = 0
+max_faces = 100 
 
 while True:
-    ret , frame = cap.read()
-
-    if ret == False:
+    ret, frame = cap.read()
+    if not ret:
         continue
-    
-    gray_frame = cv2.cvtColor(frame , cv2.COLOR_BGR2GRAY)
 
-    faces = face_cascade.detectMultiScale(gray_frame , 1.3 , 5)
-    if len(faces) == 0:
-        cv2.imshow("Frame", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-        continue
-    
-    k = 1
-    faces = sorted(faces, key = lambda x: x[2]*x[3] , reverse = True)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-    skip += 1
-
-    for face in faces[:1]:
-        x,y,w,h = face
-
+    for (x, y, w, h) in faces:
         offset = 5
         y1 = max(0, y-offset)
+        y2 = min(frame.shape[0], y+h+offset)
         x1 = max(0, x-offset)
+        x2 = min(frame.shape[1], x+w+offset)
 
-        face_offset = frame[y1:y+h+offset , x1:x+w+offset]
-        face_selection = cv2.resize(face_offset,(100 , 100))
+        face_section = gray[y1:y2, x1:x2]
+        face_section = cv2.resize(face_section, (100, 100))
+        face_section = cv2.filter2D(face_section, -1, sharpen_kernel)
 
-        face_selection = cv2.cvtColor(face_selection, cv2.COLOR_BGR2GRAY)
+        face_data.append(face_section)
 
-        if skip % 10 == 0:
-            face_data.append(face_selection)
-            print(len(face_data))
+        cv2.rectangle(frame, (x, y), (x+w, y+h), (255, 255, 255), 2)
+        cv2.putText(frame, f"{count}", (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        count += 1
 
-        cv2.imshow("Face", face_selection)
-        cv2.rectangle(frame , (x,y) , (x+w , y+h) , (0,255,0) , 2)
+    cv2.imshow("Capture Faces", frame)
 
-    cv2.imshow("Frame", frame)
-
-    key_pressed = cv2.waitKey(1) & 0xFF
-    if key_pressed == ord('q'):
+    if cv2.waitKey(1) & 0xFF == ord('q') or count >= max_faces:
         break
-    
+
+safe_name = name.replace(" ", "_")
+safe_crime = crime.replace(" ", "_")
+safe_age = age.replace(" ", "_")
+filename = f"{safe_name}__{safe_crime}__{safe_age}.npy"
+
 face_data = np.array(face_data)
-
-if len(face_data) != 0:
-    face_data = face_data.reshape((face_data.shape[0] , -1))
-    print(face_data.shape)
-
-    save_path = os.path.join(dataset_path, file_name + ".npy")
-    np.save(save_path , face_data)
-
-    print("Dataset saved at :", save_path)
-else:
-    print("No face data collected")
+np.save(os.path.join(dataset_path, filename), face_data)
+print(f"Saved {face_data.shape[0]} faces for {name} | Crime: {crime} | Age: {age}")
 
 cap.release()
 cv2.destroyAllWindows()
